@@ -121,7 +121,7 @@
     {
       "id": "ambient_air_temperature",
       "displayName": "Р”Р°С‚С‡РёРє С‚РµРјРїРµСЂР°С‚СѓСЂС‹ РѕРєСЂСѓР¶Р°СЋС‰РµРіРѕ РІРѕР·РґСѓС…Р° AMBTS",
-      "version": "builtin-1",
+      "version": "test-2",
       "url": "https://tomato2798.github.io/ge-service/files/ambient_air_temperature.pdf",
       "sha256": "9ca9417ec371648725d6f9c1b5099077b0641b1a1f89ed2c7c4d4bc6654f05fb",
       "size": 235366,
@@ -237,5 +237,6 @@
     }
   ]
 }
+
 
 
