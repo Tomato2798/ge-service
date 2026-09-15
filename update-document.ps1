@@ -1,24 +1,28 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$DocumentId,
-
-    [Parameter(Mandatory = $true)]
-    [string]$PdfPath,
-
-    [string]$ReleaseUrl,
-
+    [Parameter(Mandatory = $true)][string]$DocumentId,
+    [Parameter(Mandatory = $true)][string]$PdfPath,
+    [string]$DisplayName = "",
+    [string]$Category = "",
+    [string]$ReleaseUrl = "",
+    [string]$SearchTextPath = "",
+    [string]$WordIndexPath = "",
     [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
 
+$PagesBaseUrl = "https://tomato2798.github.io/ge-service/files"
+$LargeFileLimit = 25MB
+$ManualGeId = "manual_ge_240ac"
+
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ManifestPath = Join-Path $Root "manifest.json"
 $FilesDir = Join-Path $Root "files"
-$Version = Get-Date -Format "yyyy-MM-dd"
-$Now = Get-Date -Format "yyyy-MM-ddTHH:mm:ss"
+$TodayVersion = Get-Date -Format "yyyy-MM-dd"
+$UpdatedAt = Get-Date -Format "yyyy-MM-ddTHH:mm:ss"
 
-function Set-OrAddProperty($Object, $Name, $Value) {
+function Set-Prop {
+    param($Object, [string]$Name, $Value)
     if ($Object.PSObject.Properties.Name -contains $Name) {
         $Object.$Name = $Value
     } else {
@@ -26,126 +30,159 @@ function Set-OrAddProperty($Object, $Name, $Value) {
     }
 }
 
+function Copy-And-Hash-Index {
+    param(
+        [string]$SourcePath,
+        [string]$Suffix,
+        [string]$UrlProp,
+        [string]$HashProp,
+        [string]$SizeProp,
+        $Document
+    )
+
+    if ([string]::IsNullOrWhiteSpace($SourcePath)) { return }
+    if (-not (Test-Path $SourcePath)) { throw "Index file not found: $SourcePath" }
+
+    $DestName = "$DocumentId.$Suffix"
+    $DestPath = Join-Path $FilesDir $DestName
+
+    if (-not $DryRun) {
+        $SourceFull = [System.IO.Path]::GetFullPath((Get-Item $SourcePath).FullName)
+        $DestFull = [System.IO.Path]::GetFullPath($DestPath)
+        if ($SourceFull -ne $DestFull) { Copy-Item $SourcePath $DestPath -Force }
+    }
+
+    $Hash = (Get-FileHash $SourcePath -Algorithm SHA256).Hash.ToLower()
+    $Size = (Get-Item $SourcePath).Length
+
+    Set-Prop $Document $UrlProp "$PagesBaseUrl/$DestName"
+    Set-Prop $Document $HashProp $Hash
+    Set-Prop $Document $SizeProp $Size
+}
+
 if (-not (Test-Path $ManifestPath)) { throw "manifest.json not found: $ManifestPath" }
 if (-not (Test-Path $PdfPath)) { throw "PDF not found: $PdfPath" }
-if (-not (Test-Path $FilesDir)) { New-Item -ItemType Directory -Path $FilesDir | Out-Null }
+
+if (-not (Test-Path $FilesDir) -and -not $DryRun) {
+    New-Item -ItemType Directory -Path $FilesDir | Out-Null
+}
+
+$PdfItem = Get-Item $PdfPath
+$PdfHash = (Get-FileHash $PdfPath -Algorithm SHA256).Hash.ToLower()
+$PdfSize = $PdfItem.Length
+$IsLarge = ($PdfSize -ge $LargeFileLimit) -or ($DocumentId -eq $ManualGeId)
 
 $Manifest = Get-Content $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $Document = $Manifest.documents | Where-Object { $_.id -eq $DocumentId } | Select-Object -First 1
-if (-not $Document) { throw "Document id not found in manifest.json: $DocumentId" }
+$IsNew = ($null -eq $Document)
 
-$PdfItem = Get-Item $PdfPath
-$Sha256 = (Get-FileHash $PdfItem.FullName -Algorithm SHA256).Hash.ToLower()
-$Size = [int64]$PdfItem.Length
+if ($IsNew) {
+    if ([string]::IsNullOrWhiteSpace($DisplayName)) {
+        throw "New document requires -DisplayName"
+    }
+    if ([string]::IsNullOrWhiteSpace($Category)) { $Category = "tech_docs" }
 
-Write-Host ""
-Write-Host "GE SERVICE document update"
-Write-Host "Document : $DocumentId"
-Write-Host "Version  : $Version"
-Write-Host "Source   : $($PdfItem.FullName)"
-Write-Host "Size     : $Size bytes"
-Write-Host "SHA-256  : $Sha256"
-Write-Host ""
+    $Document = [pscustomobject]@{
+        id          = $DocumentId
+        displayName = $DisplayName
+        version     = $TodayVersion
+        url         = ""
+        sha256      = $PdfHash
+        size        = $PdfSize
+        category    = $Category
+        updatedAt   = $UpdatedAt
+    }
+    $Manifest.documents += $Document
+} else {
+    if (-not [string]::IsNullOrWhiteSpace($DisplayName)) {
+        Set-Prop $Document "displayName" $DisplayName
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Category)) {
+        Set-Prop $Document "category" $Category
+    }
+}
 
-$isLargeManual = $DocumentId -eq "manual_ge_240ac"
-
-if ($isLargeManual) {
-    Write-Host "Large MANUAL GE 240AC mode (GitHub Release)."
+if ($IsLarge) {
     if ([string]::IsNullOrWhiteSpace($ReleaseUrl)) {
-        if ($Document.url -match "github\.com/.+/releases/download/") {
+        if (($Document.PSObject.Properties.Name -contains "url") -and
+            ($Document.url -match "github\.com/.+/releases/download/")) {
             $ReleaseUrl = $Document.url
-            Write-Host "Using current Release URL: $ReleaseUrl"
         } else {
-            throw "ReleaseUrl is required. Upload the PDF to GitHub Release first, then pass -ReleaseUrl."
+            throw "Large PDF requires -ReleaseUrl. Upload it to GitHub Release first."
         }
     }
-    if ($ReleaseUrl -notmatch '^https://') { throw "ReleaseUrl must use HTTPS" }
-    $Document.url = $ReleaseUrl
+    Set-Prop $Document "url" $ReleaseUrl
 } else {
-    # Keep the stable server file name from the current URL when possible.
-    $TargetName = $null
-    try {
-        if ($Document.url) {
-            $TargetName = [System.IO.Path]::GetFileName(([uri]$Document.url).AbsolutePath)
-        }
-    } catch { }
-    if ([string]::IsNullOrWhiteSpace($TargetName)) { $TargetName = $PdfItem.Name }
+    $DestName = "$DocumentId.pdf"
 
-    $Destination = Join-Path $FilesDir $TargetName
-    $SourceFull = [System.IO.Path]::GetFullPath($PdfItem.FullName)
-    $DestinationFull = [System.IO.Path]::GetFullPath($Destination)
+    if (-not $IsNew -and
+        ($Document.PSObject.Properties.Name -contains "url") -and
+        ($Document.url -match "tomato2798\.github\.io/ge-service/files/")) {
+        try {
+            $ExistingName = [System.IO.Path]::GetFileName(([uri]$Document.url).AbsolutePath)
+            if (-not [string]::IsNullOrWhiteSpace($ExistingName)) { $DestName = $ExistingName }
+        } catch {}
+    }
+
+    $DestPath = Join-Path $FilesDir $DestName
 
     if ($DryRun) {
-        Write-Host "[DryRun] Copy: $SourceFull -> $DestinationFull"
-    } elseif ($SourceFull -ne $DestinationFull) {
-        Copy-Item $SourceFull $DestinationFull -Force
-        Write-Host "Copied PDF to files/$TargetName"
+        Write-Host "[DryRun] Copy: $($PdfItem.FullName) -> $DestPath"
     } else {
-        Write-Host "PDF already located at files/$TargetName"
+        $SourceFull = [System.IO.Path]::GetFullPath($PdfItem.FullName)
+        $DestFull = [System.IO.Path]::GetFullPath($DestPath)
+        if ($SourceFull -ne $DestFull) { Copy-Item $PdfPath $DestPath -Force }
     }
 
-    $Document.url = "https://tomato2798.github.io/ge-service/files/$TargetName"
+    Set-Prop $Document "url" "$PagesBaseUrl/$DestName"
 }
 
-$Document.version = $Version
-$Document.sha256 = $Sha256
-$Document.size = $Size
-Set-OrAddProperty $Document "updatedAt" $Now
+Set-Prop $Document "version" $TodayVersion
+Set-Prop $Document "sha256" $PdfHash
+Set-Prop $Document "size" $PdfSize
+Set-Prop $Document "updatedAt" $UpdatedAt
 
-# Refresh hashes/sizes for optional search indexes already present on disk.
-if ($Document.searchTextUrl) {
-    try {
-        $SearchName = [System.IO.Path]::GetFileName(([uri]$Document.searchTextUrl).AbsolutePath)
-        $SearchPath = Join-Path $FilesDir $SearchName
-        if (Test-Path $SearchPath) {
-            Set-OrAddProperty $Document "searchTextSha256" ((Get-FileHash $SearchPath -Algorithm SHA256).Hash.ToLower())
-            Set-OrAddProperty $Document "searchTextSize" ([int64](Get-Item $SearchPath).Length)
-        }
-    } catch { Write-Warning "Could not refresh searchText metadata: $($_.Exception.Message)" }
-}
+Copy-And-Hash-Index -SourcePath $SearchTextPath -Suffix "search.txt" `
+    -UrlProp "searchTextUrl" -HashProp "searchTextSha256" -SizeProp "searchTextSize" -Document $Document
 
-if ($Document.wordIndexUrl) {
-    try {
-        $WordName = [System.IO.Path]::GetFileName(([uri]$Document.wordIndexUrl).AbsolutePath)
-        $WordPath = Join-Path $FilesDir $WordName
-        if (Test-Path $WordPath) {
-            Set-OrAddProperty $Document "wordIndexSha256" ((Get-FileHash $WordPath -Algorithm SHA256).Hash.ToLower())
-            Set-OrAddProperty $Document "wordIndexSize" ([int64](Get-Item $WordPath).Length)
-        }
-    } catch { Write-Warning "Could not refresh wordIndex metadata: $($_.Exception.Message)" }
-}
+Copy-And-Hash-Index -SourcePath $WordIndexPath -Suffix "words.tsv" `
+    -UrlProp "wordIndexUrl" -HashProp "wordIndexSha256" -SizeProp "wordIndexSize" -Document $Document
+
+Write-Host ""
+Write-Host "Document : $DocumentId"
+Write-Host "Version  : $TodayVersion"
+Write-Host "Size     : $PdfSize bytes"
+Write-Host "SHA-256  : $PdfHash"
+Write-Host "URL      : $($Document.url)"
+if ($IsNew) { Write-Host "NEW DOCUMENT: $($Document.displayName) [$($Document.category)]" }
 
 if ($DryRun) {
-    Write-Host ""
     Write-Host "[DryRun] manifest.json was not changed. Git commands were not executed."
     exit 0
 }
 
 $Json = $Manifest | ConvertTo-Json -Depth 30
 [System.IO.File]::WriteAllText($ManifestPath, $Json, (New-Object System.Text.UTF8Encoding($false)))
-Write-Host "manifest.json updated."
 
 Push-Location $Root
 try {
     git add .
-    if ($LASTEXITCODE -ne 0) { throw "git add failed" }
+    git diff --cached --quiet
+    $HasNoChanges = ($LASTEXITCODE -eq 0)
 
-    $CommitMessage = "Update $DocumentId to $Version"
-    git commit -m $CommitMessage
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "No new Git commit was created (possibly no content changes)."
+    if (-not $HasNoChanges) {
+        if ($IsNew) { $CommitMessage = "Add $DocumentId $TodayVersion" }
+        else { $CommitMessage = "Update $DocumentId to $TodayVersion" }
+
+        git commit -m $CommitMessage
+        if ($LASTEXITCODE -ne 0) { throw "git commit failed" }
     }
 
     git push
     if ($LASTEXITCODE -ne 0) { throw "git push failed" }
-} finally {
+}
+finally {
     Pop-Location
 }
 
-Write-Host ""
 Write-Host "DONE"
-Write-Host "Document : $DocumentId"
-Write-Host "Version  : $Version"
-Write-Host "Size     : $Size bytes"
-Write-Host "SHA-256  : $Sha256"
-Write-Host "URL      : $($Document.url)"

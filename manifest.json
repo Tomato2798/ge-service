@@ -240,6 +240,16 @@
                           "searchTextSha256":  "748c12a296b69c464ec805d0df4a03de47debdeba729230a3797eb3e540611d4",
                           "wordIndexUrl":  "https://tomato2798.github.io/ge-service/files/nte240_repair_manual.words.tsv",
                           "wordIndexSha256":  "0c444a6b676c016f8002a5e1d15d4a5a2ee50b051a11429b46aaae494c02567e"
+                      },
+                      {
+                          "id":  "nte240_part_book",
+                          "displayName":  "Part book NTE240",
+                          "version":  "2026-09-15",
+                          "url":  "https://github.com/Tomato2798/ge-service/releases/download/docs-2/NTE240.Part.Book.pdf",
+                          "sha256":  "10207eab69db663987756cb00f95994364469d52a9218d9f0d570623a3255b8b",
+                          "size":  27961922,
+                          "category":  "tech_docs",
+                          "updatedAt":  "2026-09-15T17:48:55"
                       }
                   ]
 }
