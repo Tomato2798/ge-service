@@ -4,7 +4,7 @@
                       {
                           "id":  "manual_ge_240ac",
                           "displayName":  "MANUAL GE 240AC",
-                          "version":  "builtin-1",
+                          "version":  "2026-09-15",
                           "url":  "https://github.com/Tomato2798/ge-service/releases/download/docs-v1/manual_ge_240ac.pdf",
                           "sha256":  "7f8fa3af3bde54f9c0b9349de2328a06b5dabe72166b14e222a3be86fe3f773f",
                           "size":  42294097,
@@ -12,7 +12,10 @@
                           "searchTextUrl":  "https://tomato2798.github.io/ge-service/files/manual_ge_240ac.search.txt",
                           "searchTextSha256":  "f0cf06d9dce43ea306990792d4ac4b7a18a3074e1d2f08c77dcc9327f0e2893e",
                           "wordIndexUrl":  "https://tomato2798.github.io/ge-service/files/manual_ge_240ac.words.tsv",
-                          "wordIndexSha256":  "c05dae4bc183fe19315a8369139f9e33456df1d6a83920c81b8b303c0f7b5799"
+                          "wordIndexSha256":  "c05dae4bc183fe19315a8369139f9e33456df1d6a83920c81b8b303c0f7b5799",
+                          "updatedAt":  "2026-09-15T15:37:18",
+                          "searchTextSize":  531351,
+                          "wordIndexSize":  2183456
                       },
                       {
                           "id":  "nte240_24v",
