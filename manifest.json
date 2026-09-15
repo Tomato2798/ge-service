@@ -5,7 +5,7 @@
       "id": "manual_ge_240ac",
       "displayName": "MANUAL GE 240AC",
       "version": "builtin-1",
-      "url": "https://tomato2798.github.io/ge-service/files/manual_ge_240ac.pdf",
+      "url": "https://github.com/Tomato2798/ge-service/releases/download/docs-v1/manual_ge_240ac.pdf",
       "sha256": "7f8fa3af3bde54f9c0b9349de2328a06b5dabe72166b14e222a3be86fe3f773f",
       "size": 42294097,
       "category": "manual",
@@ -237,3 +237,4 @@
     }
   ]
 }
+
